@@ -63,10 +63,19 @@ c3d-ocsp/
 └── out/                       generated material (gitignored)
 ```
 
-## Run order (the happy path)
+## Run order — machine by machine
+
+This lab runs on three boxes. Each step is annotated with where it executes.
+
+### On the Ubuntu VM (Docker host) — bring up PKI, OCSP responder, backend nginx
+
+Prereqs: `docker`, `docker compose v2`, `openssl` (`apt install -y docker.io docker-compose-plugin openssl` on a fresh 22.04). Repo is cloneable directly:
 
 ```bash
-# 1. PKI: generate everything in out/ — idempotent
+git clone https://github.com/therealnoof/c3d-ocsp.git
+cd c3d-ocsp
+
+# 1. Generate the entire PKI tree — idempotent; outputs land in out/
 bash scripts/00-init.sh
 bash scripts/01-create-cas.sh
 bash scripts/02-issue-bigip-cert.sh
@@ -74,20 +83,57 @@ bash scripts/03-issue-backend-cert.sh
 bash scripts/04-issue-client-cert.sh
 bash scripts/05-export-pkcs12.sh
 
-# 2. Stand up OCSP responder + backend
+# 2. Bundle the BIG-IP-bound files for the BIG-IP step below
+bash scripts/06-package-for-bigip.sh
+# → produces out/c3d-ocsp-bigip.tar.gz
+
+# 3. Bring up OCSP responder and backend nginx
 docker compose -f ocsp/docker-compose.yml up -d
 docker compose -f nginx/docker-compose.yml up -d
+docker compose -f ocsp/docker-compose.yml ps
+docker compose -f nginx/docker-compose.yml ps
 
-# 3. Configure BIG-IP — see docs/BIGIP-SSLO-CONFIG.md
-#    (uploads from out/bigip/, out/forging-ca/, out/client-ca/)
-
-# 4. Install client cert on Win 11 — see docs/CLIENT-WIN11.md
-#    (out/client/<client>.pfx, password from pki.conf PFX_PASSWORD)
-
-# 5. Open https://c3d.app.com/ from Win 11. Pick the client cert
-#    when prompted. Backend logs should show the forged cert
-#    coming through with the original CN preserved.
+# 4. Local smoke test of the OCSP responder before pointing BIG-IP at it
+openssl ocsp \
+  -issuer  out/client-ca/ca.crt \
+  -cert    out/client/test-user.crt \
+  -url     http://localhost:2560 \
+  -CAfile  out/client-ca/ca.crt \
+  -resp_text -no_nonce
+# Expect "Response verify OK" and "out/client/test-user.crt: good"
 ```
+
+### On the BIG-IP — install certs and configure SSLO
+
+Use the bundle you just produced. Full TMSH copy-paste block in [`docs/BIGIP-SSLO-CONFIG.md`](./docs/BIGIP-SSLO-CONFIG.md#quick-tmsh-cert-install-recommended):
+
+```bash
+# From the Ubuntu host, push the tarball to the BIG-IP
+scp out/c3d-ocsp-bigip.tar.gz root@<bigip-mgmt-ip>:/var/tmp/
+
+# SSH in, unpack, and run the tmsh block from BIGIP-SSLO-CONFIG.md
+ssh root@<bigip-mgmt-ip>
+cd /var/tmp && tar xzf c3d-ocsp-bigip.tar.gz
+# … then enter tmsh and paste the install block …
+```
+
+After the tmsh block, configure the SSL profiles, OCSP profile, and SSLO inbound topology per [`docs/BIGIP-SSLO-CONFIG.md`](./docs/BIGIP-SSLO-CONFIG.md#ssl-profiles).
+
+### On the Win 11 client — install certs, run the demo
+
+Copy two files from the Ubuntu host to a USB stick, scp, or wherever:
+
+- `out/server-ca/ca.crt` (rename to `c3d-server-ca.crt`)
+- `out/client/test-user.pfx` (password is whatever `pki.conf` `PFX_PASSWORD` was set to — default `changeme`)
+
+Then follow [`docs/CLIENT-WIN11.md`](./docs/CLIENT-WIN11.md): hosts-file entry for `c3d.app.com`, install the Server CA in **Trusted Root Certification Authorities (Local Machine)**, install the PFX in **Personal (Current User)**, then browse to `https://c3d.app.com/`.
+
+You should land on a plain-text page that includes:
+```
+Forged client subject: CN=test-user, …
+Forged cert verify:    SUCCESS
+```
+and the backend nginx logs should show the same `client_cn=[CN=test-user]`. Three independent observers (browser, nginx access log, OCSP responder log) confirming the same client identity through the SSLO inspection point — that's the demo.
 
 ## What makes this different from a "regular" mTLS setup
 

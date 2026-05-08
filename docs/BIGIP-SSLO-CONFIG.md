@@ -18,7 +18,64 @@ DNS / network requirements:
 - BIG-IP can reach `c3d.nginx.com:443` (the backend).
 - Win 11 client resolves `c3d.app.com` to `10.1.10.10`.
 
-## Upload the certs
+## Quick TMSH cert install (recommended)
+
+If you'd rather skip the GUI, this is the copy-paste path. From the lab host (where you ran the cert scripts):
+
+```bash
+# 1. Bundle every BIG-IP-bound file into a single tarball
+bash scripts/06-package-for-bigip.sh
+
+# 2. Copy it to the BIG-IP
+scp out/c3d-ocsp-bigip.tar.gz root@<bigip-mgmt-ip>:/var/tmp/
+
+# 3. SSH to the BIG-IP and unpack
+ssh root@<bigip-mgmt-ip>
+cd /var/tmp && tar xzf c3d-ocsp-bigip.tar.gz
+```
+
+Then on the BIG-IP, drop into `tmsh` and run this block (idempotent — re-running replaces):
+
+```tmsh
+# BIG-IP virtual server cert + key
+install /sys crypto cert c3d_bigip_server from-local-file /var/tmp/bigip/bigip.crt
+install /sys crypto key  c3d_bigip_server from-local-file /var/tmp/bigip/bigip.key
+
+# Server CA — trust for backend re-encrypt validation
+install /sys crypto cert c3d_server_ca from-local-file /var/tmp/server-ca/ca.crt
+
+# Client CA — trust for client cert verification (and OCSP responder chain)
+install /sys crypto cert c3d_client_ca from-local-file /var/tmp/client-ca/ca.crt
+
+# Forging CA cert + key — what BIG-IP uses to mint forged client certs at re-encrypt
+install /sys crypto cert c3d_forging_ca from-local-file /var/tmp/forging-ca/ca.crt
+install /sys crypto key  c3d_forging_ca from-local-file /var/tmp/forging-ca/ca.key
+
+# Persist
+save /sys config
+
+# Sanity check
+list /sys crypto cert c3d_bigip_server c3d_server_ca c3d_client_ca c3d_forging_ca
+list /sys crypto key  c3d_bigip_server c3d_forging_ca
+```
+
+> If your environment prefers PFX over PEM for the forging cert+key, swap the two forging-CA lines for one PKCS#12 import:
+>
+> ```tmsh
+> install /sys crypto pkcs12 c3d_forging_ca from-local-file /var/tmp/forging-ca/forging-ca.pfx
+> ```
+>
+> Password is whatever `PFX_PASSWORD` was set to when you ran `scripts/05-export-pkcs12.sh` (default `changeme`).
+
+After the tmsh block, **delete the staged files** so the private keys aren't sitting in `/var/tmp`:
+
+```bash
+rm -rf /var/tmp/bigip /var/tmp/server-ca /var/tmp/client-ca /var/tmp/forging-ca /var/tmp/c3d-ocsp-bigip.tar.gz
+```
+
+## Upload the certs (GUI alternative)
+
+If you'd rather use the GUI instead of TMSH:
 
 System ▸ Certificate Management ▸ Traffic Certificate Management ▸ SSL Certificate List
 
