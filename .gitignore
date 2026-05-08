@@ -1,0 +1,12 @@
+# Generated PKI material never gets committed.
+out/
+
+# OpenSSL CA database scratch files
+**/*.old
+**/*.attr
+**/*.attr.old
+
+# OS / editor noise
+.DS_Store
+.vscode/
+.idea/

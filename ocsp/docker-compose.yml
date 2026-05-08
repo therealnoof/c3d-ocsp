@@ -1,0 +1,30 @@
+# =============================================================
+#  OCSP responder — docker-compose
+# =============================================================
+#  Mounts the repo's out/ tree at /pki:ro so the responder can
+#  read the Client CA database, the OCSP responder cert, and the
+#  responder signing key. Anything you re-issue under out/ is
+#  picked up live; you don't need to restart the container.
+#
+#  Usage (from the repo root):
+#    docker compose -f ocsp/docker-compose.yml up -d
+#    docker compose -f ocsp/docker-compose.yml logs -f
+#    docker compose -f ocsp/docker-compose.yml down
+#
+#  The container exposes 2560/tcp on the host. Make sure your
+#  client cert's AIA URL (http://ocsp.demo.com:2560) resolves
+#  to the host where this is running and the BIG-IP can reach
+#  that host on 2560.
+# =============================================================
+
+services:
+  ocsp:
+    build: .
+    container_name: c3d-ocsp
+    hostname: ocsp.demo.com
+    ports:
+      - "2560:2560"
+    volumes:
+      # Repo's out/ dir (where the cert scripts wrote everything)
+      - ../out:/pki:ro
+    restart: unless-stopped

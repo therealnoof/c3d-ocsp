@@ -1,0 +1,115 @@
+# =============================================================
+#  openssl.cnf — shared OpenSSL config for the C3D + OCSP demo
+# =============================================================
+#  This file is rendered/used by the scripts under scripts/.
+#  Each CA has its own [ ca_<name> ] section pointing at its own
+#  database directory under out/. End-entity profiles are at the
+#  bottom and are reused across the issue scripts via -extensions
+#  on the openssl ca command line.
+# =============================================================
+
+# OpenSSL needs SOMETHING here even though we don't use req's
+# default values much.
+[ default ]
+default_md       = sha256
+
+# =============================================================
+#  Three CAs — one [ ca_<name> ] section apiece.
+#  Database paths are filled in via $ENV::CA_DIR by the scripts.
+# =============================================================
+
+[ ca ]
+default_ca       = ca_default
+
+[ ca_default ]
+dir              = $ENV::CA_DIR
+database         = $dir/index.txt
+serial           = $dir/serial
+new_certs_dir    = $dir/newcerts
+certificate      = $dir/ca.crt
+private_key      = $dir/ca.key
+RANDFILE         = $dir/.rand
+default_md       = sha256
+default_days     = $ENV::EE_DAYS
+preserve         = no
+policy           = policy_loose
+unique_subject   = no
+copy_extensions  = none
+email_in_dn      = no
+rand_serial      = no
+
+[ policy_loose ]
+countryName             = optional
+stateOrProvinceName     = optional
+localityName            = optional
+organizationName        = optional
+organizationalUnitName  = optional
+commonName              = supplied
+emailAddress            = optional
+
+# =============================================================
+#  v3 extension blocks
+# =============================================================
+
+# Self-signed root / intermediate CA
+[ v3_ca ]
+basicConstraints       = critical, CA:TRUE
+keyUsage               = critical, keyCertSign, cRLSign, digitalSignature
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always, issuer:always
+
+# BIG-IP server cert (CN=c3d.app.com, SANs DNS + IP)
+# SAN string is injected via $ENV::BIGIP_SAN at sign time.
+[ v3_bigip_server ]
+basicConstraints       = critical, CA:FALSE
+keyUsage               = critical, digitalSignature, keyEncipherment
+extendedKeyUsage       = serverAuth
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid, issuer
+subjectAltName         = $ENV::BIGIP_SAN
+
+# Backend nginx server cert
+[ v3_backend_server ]
+basicConstraints       = critical, CA:FALSE
+keyUsage               = critical, digitalSignature, keyEncipherment
+extendedKeyUsage       = serverAuth
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid, issuer
+subjectAltName         = $ENV::BACKEND_SAN
+
+# Client cert for the Win 11 user.
+# AIA points at the OCSP responder so BIG-IP knows where to ask.
+[ v3_client ]
+basicConstraints       = critical, CA:FALSE
+keyUsage               = critical, digitalSignature, keyEncipherment
+extendedKeyUsage       = clientAuth
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid, issuer
+subjectAltName         = $ENV::CLIENT_SAN
+authorityInfoAccess    = OCSP;URI:$ENV::OCSP_URL
+
+# OCSP responder cert.
+# - extendedKeyUsage=OCSPSigning is what makes responses trusted.
+# - id-pkix-ocsp-nocheck (1.3.6.1.5.5.7.48.1.5) tells relying
+#   parties not to OCSP-check this responder cert itself
+#   (avoids the obvious chicken-and-egg loop).
+[ v3_ocsp_responder ]
+basicConstraints       = critical, CA:FALSE
+keyUsage               = critical, digitalSignature
+extendedKeyUsage       = critical, OCSPSigning
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid, issuer
+1.3.6.1.5.5.7.48.1.5   = ASN1:NULL
+
+# =============================================================
+#  Stub req section so `openssl req -new` doesn't complain.
+# =============================================================
+[ req ]
+default_bits        = 2048
+default_md          = sha256
+prompt              = no
+distinguished_name  = req_dn
+
+[ req_dn ]
+# Subject is supplied per-script via -subj on the command line.
+CN = placeholder
