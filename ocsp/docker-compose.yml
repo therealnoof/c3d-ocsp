@@ -22,6 +22,10 @@ services:
     build: .
     container_name: c3d-ocsp
     hostname: ocsp.demo.com
+    # tini as PID 1 so openssl is a child process. -multi worker mode
+    # needs setpgid(), which fails when openssl is PID 1 in a container
+    # ("error detaching from parent process group: Operation not permitted").
+    init: true
     ports:
       - "2560:2560"
     volumes:

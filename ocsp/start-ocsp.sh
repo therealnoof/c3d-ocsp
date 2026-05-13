@@ -23,6 +23,16 @@
 #  -text logs request and response in human-readable form, which
 #  is invaluable when the customer is staring at "OCSP didn't
 #  fire" and trying to figure out why.
+#
+#  Supervision: OpenSSL 3.x's ocsp responder exits on any malformed
+#  input — a browser hitting GET /, a TCP health probe, a port
+#  scanner, anything that isn't a real OCSPRequest. (-multi worker
+#  mode is also broken on 3.3.7: after a worker dies the parent
+#  stops servicing real queries — verified.) So we wrap openssl in
+#  a while-true loop and re-launch it ourselves; the relaunch gap
+#  is sub-second and the listening socket comes back before any
+#  retrying client gives up. SIGTERM from `docker stop` is trapped
+#  so a deliberate shutdown breaks the loop cleanly.
 # =============================================================
 
 set -euo pipefail
@@ -46,11 +56,19 @@ echo "[ocsp]   CA    = $CA"
 echo "[ocsp]   index = $INDEX"
 echo "[ocsp]   responder cert = $RSIGNER (EKU=OCSPSigning)"
 
-# `exec` so signals (docker stop) reach the openssl process.
-exec openssl ocsp \
-  -port 2560 \
-  -index "$INDEX" \
-  -CA "$CA" \
-  -rkey "$RKEY" \
-  -rsigner "$RSIGNER" \
-  -text
+shutting_down=0
+trap 'shutting_down=1; kill -TERM "${ocsp_pid:-0}" 2>/dev/null || true' TERM INT
+
+while true; do
+  openssl ocsp \
+    -port 2560 \
+    -index "$INDEX" \
+    -CA "$CA" \
+    -rkey "$RKEY" \
+    -rsigner "$RSIGNER" \
+    -text &
+  ocsp_pid=$!
+  wait "$ocsp_pid" || rc=$?
+  [[ "$shutting_down" -eq 1 ]] && exit 0
+  echo "[ocsp] openssl exited (rc=${rc:-0}); relaunching" >&2
+done
