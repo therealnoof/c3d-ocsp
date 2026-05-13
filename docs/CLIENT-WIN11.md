@@ -18,15 +18,15 @@ USB stick, scp, copy-paste, your call. Treat the `.pfx` like a password.
 
 ## DNS / hosts file
 
-The browser must resolve `c3d.app.com` to `10.1.10.10`. Easiest path on a lab Win 11:
+The browser must resolve `c3d.app.com` to `10.1.10.20`. Easiest path on a lab Win 11:
 
 1. Open Notepad **as administrator**.
 2. Open `C:\Windows\System32\drivers\etc\hosts`.
 3. Add a line:
    ```
-   10.1.10.10    c3d.app.com
+   10.1.10.20    c3d.app.com
    ```
-4. Save. Confirm with `nslookup c3d.app.com` from a regular PowerShell — it should return `10.1.10.10`.
+4. Save. Confirm with `nslookup c3d.app.com` from a regular PowerShell — it should return `10.1.10.20`.
 
 ## Install the Server CA
 

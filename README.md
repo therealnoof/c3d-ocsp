@@ -4,6 +4,8 @@ A reference build for an F5 SSLO inbound topology that uses **C3D (Client Certif
 
 The customer pain point this targets: the C3D + OCSP path has *several* moving pieces (three CAs, OCSP delegation, AIA extension on the client cert, forging CA upload to BIG-IP), and a single missing extension or wrong path will silently fail in ways that look like generic mTLS errors. This repo scripts the entire PKI side and stands up the OCSP responder so you can rule out the cert ecosystem and focus on BIG-IP config.
 
+> **Heads-up on SSLO + C3D**: SSLO deploys with its own auto-generated client-ssl / server-ssl profiles by default — those do not have C3D enabled. You have to build the C3D profiles yourself and then select them in the topology's **interception rule**. SSLO also needs a service chain attached to the rule even if you have no inspection services (create an empty one). Both gotchas are covered in [`docs/BIGIP-SSLO-CONFIG.md`](./docs/BIGIP-SSLO-CONFIG.md#ssl-profiles); F5's reference doc is <https://techdocs.f5.com/en-us/bigip-17-1-1/ssl-orchestrator-setup/integrating_c3d_with_ssl_orchestrator.html>.
+
 ## What's in scope
 
 | Piece | Provided |
@@ -24,7 +26,7 @@ The customer pain point this targets: the C3D + OCSP path has *several* moving p
    Win 11 client                           BIG-IP                      Backend nginx
   ┌──────────────┐  TLS + mTLS         ┌──────────────┐    TLS         ┌──────────────┐
   │ c3d.app.com  │ ──────────────────▶ │ c3d.app.com  │ ─────────────▶ │c3d.nginx.com │
-  │ client cert  │                     │  10.1.10.10  │   forged cert  │ trusts       │
+  │ client cert  │                     │  10.1.10.20  │   forged cert  │ trusts       │
   │ (Client CA)  │ ◀────────────────── │  SSLO + C3D  │   from         │ Forging CA   │
   └──────────────┘                     └──────┬───────┘   Forging CA   └──────────────┘
                                               │

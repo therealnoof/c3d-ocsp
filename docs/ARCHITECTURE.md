@@ -6,7 +6,7 @@
    Win 11 client                           BIG-IP (TMOS 21)             Backend nginx
   ┌──────────────┐  TLS + mTLS         ┌──────────────────┐ TLS         ┌──────────────┐
   │ c3d.app.com  │ ──────────────────▶ │  c3d.app.com     │ ──────────▶ │c3d.nginx.com │
-  │ + client cert│                     │  10.1.10.10      │ forged cert │  trusts      │
+  │ + client cert│                     │  10.1.10.20      │ forged cert │  trusts      │
   │ (Client CA)  │ ◀────────────────── │  SSLO + C3D      │ from        │  Forging CA  │
   └──────────────┘                     └────────┬─────────┘ Forging CA  └──────────────┘
                                                 │
@@ -34,7 +34,7 @@
 
 | Cert | Issued by | Goes on | Notable extensions |
 |---|---|---|---|
-| BIG-IP server cert | Server CA | BIG-IP, attached to the SSL profile on the inbound VS | `subjectAltName = DNS:c3d.app.com, IP:10.1.10.10`, `EKU=serverAuth` |
+| BIG-IP server cert | Server CA | BIG-IP, attached to the SSL profile on the inbound VS | `subjectAltName = DNS:c3d.app.com, IP:10.1.10.20`, `EKU=serverAuth` |
 | Backend nginx server cert | Server CA | nginx | `subjectAltName = DNS:c3d.nginx.com`, `EKU=serverAuth` |
 | Win 11 client cert | Client CA | Win 11 user store | `EKU=clientAuth`, `authorityInfoAccess=OCSP;URI:http://ocsp.demo.com:2560` |
 | OCSP responder cert | Client CA (delegation) | OCSP responder host | `EKU=OCSPSigning`, `id-pkix-ocsp-nocheck` |
@@ -49,7 +49,7 @@ A single CA that signs everything *would* "work" but it muddles authorization in
 
 ## The C3D step-by-step
 
-1. Win 11 opens TLS to `c3d.app.com` (which resolves to `10.1.10.10`).
+1. Win 11 opens TLS to `c3d.app.com` (which resolves to `10.1.10.20`).
 2. BIG-IP presents its server cert (`bigip.crt`, signed by Server CA). Win 11 validates against its trust store.
 3. BIG-IP requests a client cert. Win 11 sends `test-user.crt` (signed by Client CA, with AIA pointing at `http://ocsp.demo.com:2560`).
 4. **BIG-IP fires an OCSP request** to `ocsp.demo.com:2560`. The responder reads `out/client-ca/index.txt`, sees the cert is valid, signs an OCSP response with `out/ocsp/ocsp.key`, returns `good`.
@@ -78,4 +78,4 @@ A single CA that signs everything *would* "work" but it muddles authorization in
 
 ## DNS resolution
 
-The Win 11 client must resolve `c3d.app.com` to `10.1.10.10`. The BIG-IP must resolve `ocsp.demo.com` and `c3d.nginx.com` to the right backend hosts. Easiest path is the lab DNS server you control; failing that, host-file entries on each of the three machines.
+The Win 11 client must resolve `c3d.app.com` to `10.1.10.20`. The BIG-IP must resolve `ocsp.demo.com` and `c3d.nginx.com` to the right backend hosts. Easiest path is the lab DNS server you control; failing that, host-file entries on each of the three machines.
