@@ -53,5 +53,4 @@ exec openssl ocsp \
   -CA "$CA" \
   -rkey "$RKEY" \
   -rsigner "$RSIGNER" \
-  -nrequest 0 \
   -text
