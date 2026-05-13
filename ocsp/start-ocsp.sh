@@ -15,8 +15,11 @@
 #  cert (which appends to that file) is picked up live. Restart
 #  the container only if you blow away and rebuild the CA.
 #
-#  -port 0.0.0.0:2560 binds on all interfaces inside the container;
-#  docker-compose maps that to the host's 2560.
+#  -port 2560 listens on all interfaces inside the container by
+#  default; docker-compose maps that to the host's 2560. (Older
+#  OpenSSL accepted "host:port" here, but OpenSSL 3.x wants a bare
+#  port number — pass "0.0.0.0:2560" and it tries to parse it as
+#  octal and dies.)
 #  -text logs request and response in human-readable form, which
 #  is invaluable when the customer is staring at "OCSP didn't
 #  fire" and trying to figure out why.
@@ -45,7 +48,7 @@ echo "[ocsp]   responder cert = $RSIGNER (EKU=OCSPSigning)"
 
 # `exec` so signals (docker stop) reach the openssl process.
 exec openssl ocsp \
-  -port 0.0.0.0:2560 \
+  -port 2560 \
   -index "$INDEX" \
   -CA "$CA" \
   -rkey "$RKEY" \
